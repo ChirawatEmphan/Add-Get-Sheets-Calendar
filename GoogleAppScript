@@ -1,0 +1,99 @@
+// Get events from the calendar and write them into the spreadsheet.
+function getEvents() {
+  var calendar = CalendarApp.getCalendarById("Calendar ID");
+  var lastDateOfYear = new Date(new Date().getFullYear(), 11, 31); // December 31 of this year
+  var events = calendar.getEvents(new Date(), lastDateOfYear); // events from today until year's end
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+
+  // Clear previous event data (assuming headers are in row 1)
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, 5).clearContent();
+  }
+
+  // Write each event's details into the sheet
+  for (var i = 0; i < events.length; i++) {
+    var title = events[i].getTitle();
+    var start = events[i].getStartTime();
+    var end = events[i].getEndTime();
+    var location = events[i].getLocation();
+    var description = events[i].getDescription();
+
+    sheet.getRange(i + 2, 1).setValue(title);
+    sheet.getRange(i + 2, 2).setValue(start)
+         .setNumberFormat("dd/mm/yyyy h:mm:ss");
+    sheet.getRange(i + 2, 3).setValue(end)
+         .setNumberFormat("dd/mm/yyyy h:mm:ss");
+    sheet.getRange(i + 2, 4).setValue(location);
+    sheet.getRange(i + 2, 5).setValue(description);
+  }
+}
+
+
+// Delete events (only those you can modify) and add events from the spreadsheet.
+function addEvents() {
+  var calendar = CalendarApp.getCalendarById("Calendar ID");
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  
+  // Retrieve data from the spreadsheet (assumes headers in row 1)
+  var lastRow = sheet.getLastRow();
+  var data = sheet.getRange("A2:E" + lastRow).getValues();
+  /**
+    Data format:
+    [
+      [title, start time, end time, location, description],
+      [title, start time, end time, location, description],
+      ...
+    ]
+  */
+  
+  // Delete events from today until the end of the year that are owned by you.
+  var lastDateOfYear = new Date(new Date().getFullYear(), 11, 31);
+  var events = calendar.getEvents(new Date(), lastDateOfYear);
+  for (var i = 0; i < events.length; i++) {
+    // Check if you own the event before trying to delete it.
+    if (events[i].isOwnedByMe()) {
+      try {
+        events[i].deleteEvent();
+      } catch (e) {
+        Logger.log("Error deleting event '" + events[i].getTitle() + "': " + e);
+      }
+      Utilities.sleep(100);  // Pause briefly between deletions
+    } else {
+      Logger.log("Skipping deletion for event '" + events[i].getTitle() + "' (not owned by you)");
+    }
+  }
+  
+  // Add events from the spreadsheet data to the calendar.
+  for (var i = 0; i < data.length; i++) {
+    var title = data[i][0];
+    var startTime = data[i][1];
+    var endTime = data[i][2];
+    var location = data[i][3];
+    var description = data[i][4];
+    
+    // If your spreadsheet dates are not Date objects, you may need to convert them:
+    // startTime = new Date(startTime);
+    // endTime = new Date(endTime);
+    
+    try {
+      calendar.createEvent(title, startTime, endTime, {
+        location: location, 
+        description: description
+      });
+    } catch (e) {
+      Logger.log("Error creating event '" + title + "': " + e);
+    }
+    Utilities.sleep(100);  // Pause briefly between event creations
+  }
+}
+
+
+// Create a custom menu in the spreadsheet to trigger the functions.
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('การทำงาน')
+    .addItem('Add events to calendar', 'addEvents')
+    .addItem('Get events from calendar', 'getEvents')
+    .addToUi();
+}
